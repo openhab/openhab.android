@@ -44,6 +44,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.appcompat.app.ActionBarDrawerToggle
@@ -157,6 +158,22 @@ class MainActivity : AbstractBaseActivity(), ConnectionFactory.UpdateListener {
     private val backgroundTasksManager = BackgroundTasksManager()
     private var inServerSelectionMode = false
     private var wifiSsidDuringLastOnStart: String? = null
+
+    private val preferenceActivityCallback =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            CrashReportingHelper.d(TAG, "preferenceActivityCallback: $result")
+            val data = result.data ?: return@registerForActivityResult
+            if (data.getBooleanExtra(PreferencesActivity.RESULT_EXTRA_SITEMAP_CLEARED, false)) {
+                updateSitemapDrawerEntries()
+                executeOrStoreAction(PendingAction.ChooseSitemap())
+            }
+            if (data.getBooleanExtra(PreferencesActivity.RESULT_EXTRA_SITEMAP_DRAWER_CHANGED, false)) {
+                updateSitemapDrawerEntries()
+            }
+            if (data.getBooleanExtra(PreferencesActivity.RESULT_EXTRA_THEME_CHANGED, false)) {
+                recreate()
+            }
+    }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -377,28 +394,6 @@ class MainActivity : AbstractBaseActivity(), ConnectionFactory.UpdateListener {
                 throw Exception("Crash menu item pressed")
             }
             else -> super.onOptionsItemSelected(item)
-        }
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        CrashReportingHelper.d(TAG, "onActivityResult() requestCode = $requestCode, resultCode = $resultCode")
-        when (requestCode) {
-            REQUEST_CODE_SETTINGS -> {
-                if (data == null) {
-                    return
-                }
-                if (data.getBooleanExtra(PreferencesActivity.RESULT_EXTRA_SITEMAP_CLEARED, false)) {
-                    updateSitemapDrawerEntries()
-                    executeOrStoreAction(PendingAction.ChooseSitemap())
-                }
-                if (data.getBooleanExtra(PreferencesActivity.RESULT_EXTRA_SITEMAP_DRAWER_CHANGED, false)) {
-                    updateSitemapDrawerEntries()
-                }
-                if (data.getBooleanExtra(PreferencesActivity.RESULT_EXTRA_THEME_CHANGED, false)) {
-                    recreate()
-                }
-            }
         }
     }
 
@@ -845,7 +840,7 @@ class MainActivity : AbstractBaseActivity(), ConnectionFactory.UpdateListener {
                 R.id.settings -> {
                     val settingsIntent = Intent(this@MainActivity, PreferencesActivity::class.java)
                     settingsIntent.putExtra(PreferencesActivity.START_EXTRA_SERVER_PROPERTIES, serverProperties)
-                    startActivityForResult(settingsIntent, REQUEST_CODE_SETTINGS)
+                    preferenceActivityCallback.launch(settingsIntent)
                     handled = true
                 }
                 R.id.about -> {
@@ -1439,7 +1434,6 @@ class MainActivity : AbstractBaseActivity(), ConnectionFactory.UpdateListener {
         private val TAG = MainActivity::class.java.simpleName
 
         // Activities request codes
-        private const val REQUEST_CODE_SETTINGS = 1001
         private const val REQUEST_CODE_PERMISSIONS = 1002
     }
 }
