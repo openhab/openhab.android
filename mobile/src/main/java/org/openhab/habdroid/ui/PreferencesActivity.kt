@@ -13,7 +13,6 @@
 
 package org.openhab.habdroid.ui
 
-import android.app.Activity
 import android.app.Dialog
 import android.app.KeyguardManager
 import android.appwidget.AppWidgetManager
@@ -33,6 +32,7 @@ import android.util.Log
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.ColorInt
 import androidx.annotation.DrawableRes
 import androidx.annotation.RequiresApi
@@ -258,6 +258,18 @@ class PreferencesActivity : AbstractBaseActivity() {
         private var notificationPollingPref: NotificationPollingPreference? = null
         private var notificationStatusHint: Preference? = null
         private var addServerPref: BetaPreference? = null
+        private var selectRingToneCallback = registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            Log.d(TAG, "selectRingToneCallback: $result")
+            val data = result.data ?: return@registerForActivityResult
+            val ringtoneUri = data.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            val ringtonePref = getPreference(PrefKeys.NOTIFICATION_TONE)
+            updateRingtonePreferenceSummary(ringtonePref, ringtoneUri)
+            prefs.edit {
+                putString(PrefKeys.NOTIFICATION_TONE, ringtoneUri?.toString() ?: "")
+            }
+        }
 
         override fun onStart() {
             super.onStart()
@@ -419,7 +431,7 @@ class PreferencesActivity : AbstractBaseActivity() {
                         putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true)
                         putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, currentTone)
                     }
-                    startActivityForResult(chooserIntent, REQUEST_CODE_RINGTONE)
+                    selectRingToneCallback.launch(chooserIntent)
                     true
                 }
 
@@ -502,19 +514,6 @@ class PreferencesActivity : AbstractBaseActivity() {
             CacheManager.getInstance(context).clearCache(true)
             // Start launch activity
             startActivity(restartIntent)
-        }
-
-        override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-            if (requestCode == REQUEST_CODE_RINGTONE && data != null) {
-                val ringtoneUri = data.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
-                val ringtonePref = getPreference(PrefKeys.NOTIFICATION_TONE)
-                updateRingtonePreferenceSummary(ringtonePref, ringtoneUri)
-                prefs.edit {
-                    putString(PrefKeys.NOTIFICATION_TONE, ringtoneUri?.toString() ?: "")
-                }
-            } else {
-                super.onActivityResult(requestCode, resultCode, data)
-            }
         }
 
         private fun updateNotificationStatusSummaries() {
@@ -602,10 +601,6 @@ class PreferencesActivity : AbstractBaseActivity() {
 
         override fun onPrimaryCloudConnectionChanged(connection: CloudConnection?) {
             updateNotificationStatusSummaries()
-        }
-
-        companion object {
-            private const val REQUEST_CODE_RINGTONE = 1000
         }
     }
 
@@ -1273,6 +1268,69 @@ class PreferencesActivity : AbstractBaseActivity() {
         private lateinit var namePref: CustomInputTypePreference
         private lateinit var iconPref: ListPreference
         private lateinit var requireUnlockPref: SwitchPreferenceCompat
+        private var itemAndStatePrefCallback = registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            Log.d(TAG, "itemAndStatePrefCallback: $result")
+            val data = result.data ?: return@registerForActivityResult
+            itemAndStatePref.item = data.getStringExtra("item")
+            itemAndStatePref.label = data.getStringExtra("label")
+            itemAndStatePref.state = data.getStringExtra("state")
+            itemAndStatePref.mappedState = data.getStringExtra("mappedState")
+            val itemTags = data.extras?.get("tags") as Array<*>
+            updateItemAndStatePrefSummary()
+
+            if (namePref.text.isNullOrEmpty()) {
+                namePref.text = itemAndStatePref.label
+            }
+            if (iconPref.value == null || iconPref.value == getString(R.string.tile_icon_openhab_value)) {
+                val selectedIcon = data.getStringExtra("icon") ?: "openhab_icon"
+                val preSelectIcon = if (selectedIcon.startsWith("parents")) {
+                    R.string.tile_icon_people_value
+                } else if (selectedIcon.startsWith("boy") || selectedIcon.startsWith("girl")) {
+                    R.string.tile_icon_child_value
+                } else if (selectedIcon.startsWith("baby")) {
+                    R.string.tile_icon_baby_value
+                } else if (selectedIcon.startsWith("man")) {
+                    R.string.tile_icon_man_value
+                } else if (selectedIcon.startsWith("women")) {
+                    R.string.tile_icon_woman_value
+                } else {
+                    when (selectedIcon) {
+                        "screen" -> R.string.tile_icon_tv_value
+                        "lightbulb", "light", "slider" -> R.string.tile_icon_bulb_value
+                        "lock" -> R.string.tile_icon_lock_value
+                        "time" -> R.string.tile_icon_clock_value
+                        "house", "presence", "group" -> R.string.tile_icon_house_value
+                        "microphone", "recorder" -> R.string.tile_icon_microphone_value
+                        "colorpicker", "colorlight", "colorwheel", "rbg" -> R.string.tile_icon_color_palette_value
+                        "battery", "batterylevel", "lowbattery" -> R.string.tile_icon_battery_value
+                        "zoom" -> R.string.tile_icon_magnifier_value
+                        "garden" -> R.string.tile_icon_tree_value
+                        "network" -> R.string.tile_icon_wifi_value
+                        "shield" -> R.string.tile_icon_shield_value
+                        "bedroom", "bedroom_blue", "bedroom_orange", "bedroom_red" -> R.string.tile_icon_bed_value
+                        "settings" -> R.string.tile_icon_settings_value
+                        "bath", "toilet" -> R.string.tile_icon_bath_value
+                        "blinds", "rollershutter" -> R.string.tile_icon_roller_shutter_value
+                        "camera" -> R.string.tile_icon_camera_value
+                        "wallswitch" -> R.string.tile_icon_light_switch_value
+                        "garage", "garagedoor", "garage_detached", "garage_detached_selected" ->
+                            R.string.tile_icon_garage_value
+                        "switch" -> R.string.tile_icon_switch_value
+                        "sofa" -> R.string.tile_icon_sofa_value
+                        else -> when {
+                            Item.Tag.Lighting in itemTags -> R.string.tile_icon_bulb_value
+                            Item.Tag.Blind in itemTags -> R.string.tile_icon_roller_shutter_value
+                            Item.Tag.Switchable in itemTags -> R.string.tile_icon_switch_value
+                            else -> R.string.tile_icon_openhab_value
+                        }
+                    }
+                }
+                iconPref.value = getString(preSelectIcon)
+                updateIconPrefIcon()
+            }
+        }
 
         override fun onCreate(savedInstanceState: Bundle?) {
             super.onCreate(savedInstanceState)
@@ -1309,7 +1367,7 @@ class PreferencesActivity : AbstractBaseActivity() {
             itemAndStatePref.setOnPreferenceClickListener {
                 val intent = Intent(it.context, BasicItemPickerActivity::class.java)
                 intent.putExtra("item", itemAndStatePref.item)
-                startActivityForResult(intent, RESULT_BASIC_ITEM_PICKER)
+                itemAndStatePrefCallback.launch(intent)
                 true
             }
         }
@@ -1375,71 +1433,6 @@ class PreferencesActivity : AbstractBaseActivity() {
             updateItemAndStatePrefSummary()
         }
 
-        override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-            super.onActivityResult(requestCode, resultCode, data)
-            Log.d(TAG, "onActivityResult() requestCode = $requestCode, resultCode = $resultCode")
-            if (requestCode == RESULT_BASIC_ITEM_PICKER && resultCode == Activity.RESULT_OK && data != null) {
-                Log.d(TAG, "Setting itemAndStatePref data")
-                itemAndStatePref.item = data.getStringExtra("item")
-                itemAndStatePref.label = data.getStringExtra("label")
-                itemAndStatePref.state = data.getStringExtra("state")
-                itemAndStatePref.mappedState = data.getStringExtra("mappedState")
-                val itemTags = data.extras?.get("tags") as Array<*>
-                updateItemAndStatePrefSummary()
-
-                if (namePref.text.isNullOrEmpty()) {
-                    namePref.text = itemAndStatePref.label
-                }
-                if (iconPref.value == null || iconPref.value == getString(R.string.tile_icon_openhab_value)) {
-                    val selectedIcon = data.getStringExtra("icon") ?: "openhab_icon"
-                    val preSelectIcon = if (selectedIcon.startsWith("parents")) {
-                        R.string.tile_icon_people_value
-                    } else if (selectedIcon.startsWith("boy") || selectedIcon.startsWith("girl")) {
-                        R.string.tile_icon_child_value
-                    } else if (selectedIcon.startsWith("baby")) {
-                        R.string.tile_icon_baby_value
-                    } else if (selectedIcon.startsWith("man")) {
-                        R.string.tile_icon_man_value
-                    } else if (selectedIcon.startsWith("women")) {
-                        R.string.tile_icon_woman_value
-                    } else {
-                        when (selectedIcon) {
-                            "screen" -> R.string.tile_icon_tv_value
-                            "lightbulb", "light", "slider" -> R.string.tile_icon_bulb_value
-                            "lock" -> R.string.tile_icon_lock_value
-                            "time" -> R.string.tile_icon_clock_value
-                            "house", "presence", "group" -> R.string.tile_icon_house_value
-                            "microphone", "recorder" -> R.string.tile_icon_microphone_value
-                            "colorpicker", "colorlight", "colorwheel", "rbg" -> R.string.tile_icon_color_palette_value
-                            "battery", "batterylevel", "lowbattery" -> R.string.tile_icon_battery_value
-                            "zoom" -> R.string.tile_icon_magnifier_value
-                            "garden" -> R.string.tile_icon_tree_value
-                            "network" -> R.string.tile_icon_wifi_value
-                            "shield" -> R.string.tile_icon_shield_value
-                            "bedroom", "bedroom_blue", "bedroom_orange", "bedroom_red" -> R.string.tile_icon_bed_value
-                            "settings" -> R.string.tile_icon_settings_value
-                            "bath", "toilet" -> R.string.tile_icon_bath_value
-                            "blinds", "rollershutter" -> R.string.tile_icon_roller_shutter_value
-                            "camera" -> R.string.tile_icon_camera_value
-                            "wallswitch" -> R.string.tile_icon_light_switch_value
-                            "garage", "garagedoor", "garage_detached", "garage_detached_selected" ->
-                                R.string.tile_icon_garage_value
-                            "switch" -> R.string.tile_icon_switch_value
-                            "sofa" -> R.string.tile_icon_sofa_value
-                            else -> when {
-                                Item.Tag.Lighting in itemTags -> R.string.tile_icon_bulb_value
-                                Item.Tag.Blind in itemTags -> R.string.tile_icon_roller_shutter_value
-                                Item.Tag.Switchable in itemTags -> R.string.tile_icon_switch_value
-                                else -> R.string.tile_icon_openhab_value
-                            }
-                        }
-                    }
-                    iconPref.value = getString(preSelectIcon)
-                    updateIconPrefIcon()
-                }
-            }
-        }
-
         override fun onLeaveAndSave() {
             Log.d(TAG, "Save tile $tileId")
             val context = preferenceManager.context
@@ -1483,6 +1476,31 @@ class PreferencesActivity : AbstractBaseActivity() {
         private lateinit var itemAndStatePref: ItemAndStatePreference
         private lateinit var namePref: CustomInputTypePreference
         private lateinit var themePref: ListPreference
+        private var itemAndStatePrefCallback = registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            Log.d(TAG, "itemAndStatePrefCallback: $result")
+            val data = result.data ?: return@registerForActivityResult
+            itemAndStatePref.item = data.getStringExtra("item")
+            val label = if (data.getStringExtra("label").isNullOrEmpty()) {
+                itemAndStatePref.item
+            } else {
+                data.getStringExtra("label")
+            }
+            itemAndStatePref.label = label
+            itemAndStatePref.state = data.getStringExtra("state")
+            itemAndStatePref.mappedState = data.getStringExtra("mappedState")
+            itemAndStatePref.icon = data.getStringExtra("icon")
+            updateItemAndStatePrefSummary()
+
+            if (namePref.text.isNullOrEmpty()) {
+                namePref.text = preferenceManager.context.getString(
+                    R.string.item_update_widget_text,
+                    itemAndStatePref.label,
+                    itemAndStatePref.mappedState
+                )
+            }
+        }
 
         override fun onCreate(savedInstanceState: Bundle?) {
             super.onCreate(savedInstanceState)
@@ -1522,7 +1540,7 @@ class PreferencesActivity : AbstractBaseActivity() {
             itemAndStatePref.setOnPreferenceClickListener {
                 val intent = Intent(it.context, BasicItemPickerActivity::class.java)
                 intent.putExtra("item", itemAndStatePref.item)
-                startActivityForResult(intent, RESULT_BASIC_ITEM_PICKER)
+                itemAndStatePrefCallback.launch(intent)
                 true
             }
         }
@@ -1570,33 +1588,6 @@ class PreferencesActivity : AbstractBaseActivity() {
             themePref.value = data.theme
 
             updateItemAndStatePrefSummary()
-        }
-
-        override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-            super.onActivityResult(requestCode, resultCode, data)
-            Log.d(TAG, "onActivityResult() requestCode = $requestCode, resultCode = $resultCode")
-            if (requestCode == RESULT_BASIC_ITEM_PICKER && resultCode == Activity.RESULT_OK && data != null) {
-                Log.d(TAG, "Setting itemAndStatePref data")
-                itemAndStatePref.item = data.getStringExtra("item")
-                val label = if (data.getStringExtra("label").isNullOrEmpty()) {
-                    itemAndStatePref.item
-                } else {
-                    data.getStringExtra("label")
-                }
-                itemAndStatePref.label = label
-                itemAndStatePref.state = data.getStringExtra("state")
-                itemAndStatePref.mappedState = data.getStringExtra("mappedState")
-                itemAndStatePref.icon = data.getStringExtra("icon")
-                updateItemAndStatePrefSummary()
-
-                if (namePref.text.isNullOrEmpty()) {
-                    namePref.text = preferenceManager.context.getString(
-                        R.string.item_update_widget_text,
-                        itemAndStatePref.label,
-                        itemAndStatePref.mappedState
-                    )
-                }
-            }
         }
 
         override fun onLeaveAndSave() {
@@ -1666,7 +1657,6 @@ class PreferencesActivity : AbstractBaseActivity() {
         private const val STATE_KEY_RESULT = "result"
         private const val PERMISSIONS_REQUEST_FOR_CALL_STATE = 0
         private const val PERMISSIONS_REQUEST_FOR_WIFI_NAME = 1
-        private const val RESULT_BASIC_ITEM_PICKER = 0
 
         internal const val SNACKBAR_TAG_CLIENT_SSL_NOT_SUPPORTED = "clientSslNotSupported"
         internal const val SNACKBAR_TAG_BG_TASKS_PERMISSION_DECLINED_PHONE = "bgTasksPermissionDeclinedPhone"
