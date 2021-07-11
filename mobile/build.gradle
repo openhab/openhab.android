@@ -5,7 +5,7 @@ buildscript {
     ext.kotlin_coroutines_version = '1.4.2'
     ext.ok_http_version = '4.9.1'
     ext.work_manager_version = '2.5.0'
-    ext.about_libraries_version = '8.8.5'
+    ext.about_libraries_version = '8.9.0'
     ext.powermock_version = '2.0.9'
     ext.espresso_version = '3.4.0'
     ext.exoplayer_version = '2.14.1'
