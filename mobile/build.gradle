@@ -167,7 +167,7 @@ dependencies {
     implementation "com.github.GrenderG:Toasty:1.5.0"
 
     // Firebase
-    implementation platform("com.google.firebase:firebase-bom:25.11.0")
+    implementation platform("com.google.firebase:firebase-bom:28.2.1")
     fullImplementation "com.google.firebase:firebase-messaging-ktx"
     fullImplementation "com.google.firebase:firebase-crashlytics-ktx"
 
